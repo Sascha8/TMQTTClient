@@ -653,7 +653,6 @@
             <Form>fMain</Form>
         </DCCReference>
         <DCCReference Include="..\..\TMQTTClient\MQTT.pas"/>
-        <DCCReference Include="..\..\TMQTTClient\MQTTReadThread.pas"/>
         <BuildConfiguration Include="Debug">
             <Key>Cfg_2</Key>
             <CfgParent>Base</CfgParent>

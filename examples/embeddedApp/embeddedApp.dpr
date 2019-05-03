@@ -56,13 +56,14 @@ type
     fPingCounter: integer;
     fPingTimer: integer;
     fState: TembeddedAppStates;
-    fMessage: ansistring;
+    fMessage: string;
     fPubTimer: integer;
     procedure OnConnAck(Sender: TObject; ReturnCode: longint);
     procedure OnPingResp(Sender: TObject);
+    procedure OnDisconnect(Sender: TObject);
     procedure OnSubAck(Sender: TObject; MessageID: longint; GrantedQoS: longint);
     procedure OnUnSubAck(Sender: TObject);
-    procedure OnPublish(Sender: TObject; topic, payload: ansistring);
+    procedure OnPublish(Sender: TObject; topic, payload: string);
   public
     procedure Run();
   end;
@@ -70,9 +71,10 @@ type
 procedure TembeddedApp.OnConnAck(Sender: TObject; ReturnCode: longint);
 begin
   writeln('Connection Acknowledged, Return Code: ' + IntToStr(Ord(ReturnCode)));
+  (Sender as TMQTTClient).SUBSCRIBE('/topic/danieleteti');
 end;
 
-procedure TembeddedApp.OnPublish(Sender: TObject; topic, payload: ansistring);
+procedure TembeddedApp.OnPublish(Sender: TObject; topic, payload: string);
 begin
   writeln('Publish Received. Topic: ' + topic + ' Payload: ' + payload);
 end;
@@ -85,6 +87,11 @@ end;
 procedure TembeddedApp.OnUnSubAck(Sender: TObject);
 begin
   writeln('Unsubscribe Ack Received');
+end;
+
+procedure TembeddedApp.OnDisconnect(Sender: TObject);
+begin
+  (Sender as TMQTTClient).Terminate;
 end;
 
 procedure TembeddedApp.OnPingResp(Sender: TObject);
@@ -110,74 +117,79 @@ begin
   fMQTTClient.OnPingResp := OnPingResp;
   fMQTTClient.OnPublish := OnPublish;
   fMQTTClient.OnSubAck := OnSubAck;
+  fMQTTClient.OnDisconnect := OnDisconnect;
 
-  while true do
-  begin
-    case fState of
-      STARTING:
-        begin
-          // Connect to MQTT server
-          writeln('STARTING...');
-          fPingCounter := 0;
-          fPingTimer := 0;
-          fPubTimer := 50;
-          if fMQTTClient.Connect then
-          begin
-            // Make subscriptions
-            fMQTTClient.Subscribe('github.com/jamiei/TMQTTClient/#');
-            fState := RUNNING;
-          end
-          else
-          begin
-            fState := FAILING
-          end;
-        end;
-      RUNNING:
-        begin
-          // Publish stuff
-          if fPubTimer mod 10 = 0 then
-          begin
-            if not fMQTTClient.Publish('github.com/jamiei/TMQTTClient', fMessage) then
-            begin
-              fState := FAILING;
-            end;
-          end;
-          fPubTimer := fPubTimer + 1;
+  fMQTTClient.Start;
 
-          // Ping the MQTT server occasionally
-          if (fPingTimer mod 100) = 0 then
-          begin
-            if not fMQTTClient.PingReq then
-            begin
-              fState := FAILING;
-            end
-            else
-            begin
-              fPingCounter := fPingCounter + 1;
-            end;
-            // Check that pings are being answered
-            if fPingCounter > 3 then
-            begin
-              writeln('Pings unanswered');
-              fState := FAILING;
-            end;
-          end;
-          fPingTimer := fPingTimer + 1;
-        end;
-      FAILING:
-        begin
-          writeln('FAILING...');
-          fMQTTClient.ForceDisconnect;
-          fState := STARTING;
-        end;
-    end;
+  fMQTTClient.WaitFor;
 
-    // Synch with MQTT Reader Thread
-    CheckSynchronize(0);
+  // while true do
+  // begin
+  // case fState of
+  // STARTING:
+  // begin
+  // // Connect to MQTT server
+  // writeln('STARTING...');
+  // fPingCounter := 0;
+  // fPingTimer := 0;
+  // fPubTimer := 50;
+  // if fMQTTClient.Connect then
+  // begin
+  // // Make subscriptions
+  // fMQTTClient.SUBSCRIBE('github.com/jamiei/TMQTTClient/#');
+  // fState := RUNNING;
+  // end
+  // else
+  // begin
+  // fState := FAILING
+  // end;
+  // end;
+  // RUNNING:
+  // begin
+  // // Publish stuff
+  // if fPubTimer mod 10 = 0 then
+  // begin
+  // if not fMQTTClient.Publish('github.com/jamiei/TMQTTClient', fMessage) then
+  // begin
+  // fState := FAILING;
+  // end;
+  // end;
+  // fPubTimer := fPubTimer + 1;
+  //
+  // // Ping the MQTT server occasionally
+  // if (fPingTimer mod 100) = 0 then
+  // begin
+  // if not fMQTTClient.PingReq then
+  // begin
+  // fState := FAILING;
+  // end
+  // else
+  // begin
+  // fPingCounter := fPingCounter + 1;
+  // end;
+  // // Check that pings are being answered
+  // if fPingCounter > 3 then
+  // begin
+  // writeln('Pings unanswered');
+  // fState := FAILING;
+  // end;
+  // end;
+  // fPingTimer := fPingTimer + 1;
+  // end;
+  // FAILING:
+  // begin
+  // writeln('FAILING...');
+  // fMQTTClient.ForceDisconnect;
+  // fState := STARTING;
+  // end;
+  // end;
 
-    // Yawn.
-    sleep(100);
-  end;
+  // Synch with MQTT Reader Thread
+  CheckSynchronize(0);
+
+  // Yawn.
+  sleep(100);
+  // end;
 end;
 
 var

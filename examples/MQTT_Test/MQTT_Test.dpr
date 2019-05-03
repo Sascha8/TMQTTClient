@@ -3,9 +3,8 @@ program MQTT_Test;
 uses
   FastMM4,
   Forms,
-  uMain in 'uMain.pas' {fMain} ,
-  MQTT in '..\..\TMQTTClient\MQTT.pas',
-  MQTTReadThread in '..\..\TMQTTClient\MQTTReadThread.pas';
+  uMain in 'uMain.pas' {fMain},
+  MQTT in '..\..\TMQTTClient\MQTT.pas';
 
 {$R *.res}
 

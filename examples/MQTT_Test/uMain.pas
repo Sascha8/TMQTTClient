@@ -14,7 +14,6 @@ uses
   Dialogs,
   StdCtrls,
   MQTT,
-  MQTTReadThread,
   ExtCtrls,
   ShellAPI,
   IdBaseComponent,
