@@ -52,7 +52,7 @@ type
     procedure OnPingResp(Sender: TObject);
     procedure OnSubAck(Sender: TObject; MessageID: integer; GrantedQoS: integer);
     procedure OnUnSubAck(Sender: TObject);
-    procedure OnPublish(Sender: TObject; topic, payload: ansistring);
+    procedure OnPublish(Sender: TObject; topic, payload: string);
     procedure btnSubscribeClick(Sender: TObject);
     procedure lblUrlClick(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
@@ -72,7 +72,7 @@ implementation
 {$R *.dfm}
 
 
-procedure TfMain.OnPublish(Sender: TObject; topic, payload: ansistring);
+procedure TfMain.OnPublish(Sender: TObject; topic, payload: string);
 begin
   mStatus.Lines.Add('Publish Received. Topic: ' + topic + ' Payload: ' + payload);
 end;

@@ -35,7 +35,6 @@ interface
 uses
   SysUtils,
   Classes,
-  System.AnsiStrings,
   IdTCPClient,
   IdGlobal;
 
@@ -53,7 +52,7 @@ Type
   TRxStates = (RX_FIXED_HEADER, RX_LENGTH, RX_DATA, RX_ERROR, RX_DISCONNECTED);
 
   TConnAckEvent = procedure(Sender: TObject; ReturnCode: integer) of object;
-  TPublishEvent = procedure(Sender: TObject; topic, payload: ansistring) of object;
+  TPublishEvent = procedure(Sender: TObject; topic, payload: string) of object;
   TPingRespEvent = procedure(Sender: TObject) of object;
   TSubAckEvent = procedure(Sender: TObject; MessageID: integer; GrantedQoS: integer) of object;
   TUnSubAckEvent = procedure(Sender: TObject; MessageID: integer) of object;
@@ -258,8 +257,7 @@ var
   MessageType: Byte;
   DataLen: integer;
   QoS: integer;
-  topic: ansistring;
-  payload: ansistring;
+  DataAsString, topic, payload: string;
   ResponseVH: TBytes;
   ConnectReturn: integer;
 begin
@@ -281,49 +279,54 @@ begin
       if Assigned(OnConnAck) then
         OnConnAck(Self, ConnectReturn);
     end
-    else if (MessageType = Ord(MQTT.PUBLISH)) then
-    begin
-      // Read the Length Bytes
-      DataLen := BytesToStrLength(Copy(TBytes(fCurrentMessage.Data), 0, 2));
-      // Get the Topic
-      // SetString(topic, PChar(@CurrentMessage.Data[2]), DataLen);
-      SetString(topic, PAnsiChar(@fCurrentMessage.Data[2]), DataLen); // dteti
-      // Get the Payload
-      // SetString(payload, PChar(@CurrentMessage.Data[2 + DataLen]),
-      // (Length(CurrentMessage.Data) - 2 - DataLen));
-      SetString(payload, PAnsiChar(@fCurrentMessage.Data[2 + DataLen]),
-        (Length(fCurrentMessage.Data) - 2 - DataLen)); // dteti
-      if Assigned(OnPublish) then
-        OnPublish(Self, topic, payload);
-    end
-    else if (MessageType = Ord(MQTT.SUBACK)) then
-    begin
-      // Reading the Message ID
-      ResponseVH := Copy(TBytes(fCurrentMessage.Data), 0, 2);
-      DataLen := BytesToStrLength(ResponseVH);
-      // Next Read the Granted QoS
-      QoS := 0;
-      if (Length(fCurrentMessage.Data) - 2) > 0 then
+    else
+      if (MessageType = Ord(MQTT.PUBLISH)) then
       begin
-        ResponseVH := Copy(TBytes(fCurrentMessage.Data), 2, 1);
-        QoS := ResponseVH[0];
-      end;
-      if Assigned(OnSubAck) then
-        OnSubAck(Self, DataLen, QoS);
-    end
-    else if (MessageType = Ord(MQTT.UNSUBACK)) then
-    begin
-      // Read the Message ID for the event handler
-      ResponseVH := Copy(TBytes(fCurrentMessage.Data), 0, 2);
-      DataLen := BytesToStrLength(ResponseVH);
-      if Assigned(OnUnSubAck) then
-        OnUnSubAck(Self, DataLen);
-    end
-    else if (MessageType = Ord(MQTT.PINGRESP)) then
-    begin
-      if Assigned(OnPingResp) then
-        OnPingResp(Self);
-    end;
+        // Read the Length Bytes
+        DataLen := BytesToStrLength(Copy(TBytes(fCurrentMessage.Data), 0, 2));
+        // Get the Topic
+        Delete(fCurrentMessage.Data, 0, 2);
+        DataAsString := TEncoding.UTF8.GetString(fCurrentMessage.Data);
+        topic := DataAsString.Substring(0, DataLen);
+        payload := DataAsString.Substring(DataLen);
+        // SetString(topic, PChar(@fCurrentMessage.Data[2]), DataLen);
+        // Get the Payload
+        // SetString(payload, PChar(@fCurrentMessage.Data[2 + DataLen]),
+        // (Length(fCurrentMessage.Data) - 2 - DataLen));
+        if Assigned(OnPublish) then
+          OnPublish(Self, topic, payload);
+      end
+      else
+        if (MessageType = Ord(MQTT.SUBACK)) then
+        begin
+          // Reading the Message ID
+          ResponseVH := Copy(TBytes(fCurrentMessage.Data), 0, 2);
+          DataLen := BytesToStrLength(ResponseVH);
+          // Next Read the Granted QoS
+          QoS := 0;
+          if (Length(fCurrentMessage.Data) - 2) > 0 then
+          begin
+            ResponseVH := Copy(TBytes(fCurrentMessage.Data), 2, 1);
+            QoS := ResponseVH[0];
+          end;
+          if Assigned(OnSubAck) then
+            OnSubAck(Self, DataLen, QoS);
+        end
+        else
+          if (MessageType = Ord(MQTT.UNSUBACK)) then
+          begin
+            // Read the Message ID for the event handler
+            ResponseVH := Copy(TBytes(fCurrentMessage.Data), 0, 2);
+            DataLen := BytesToStrLength(ResponseVH);
+            if Assigned(OnUnSubAck) then
+              OnUnSubAck(Self, DataLen);
+          end
+          else
+            if (MessageType = Ord(MQTT.PINGRESP)) then
+            begin
+              if Assigned(OnPingResp) then
+                OnPingResp(Self);
+            end;
   end;
 end;
 

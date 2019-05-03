@@ -68,8 +68,8 @@ type
 
   TMQTTClient = class(TObject)
   private
-    FClientID: ansistring;
-    FHostname: ansistring;
+    FClientID: string;
+    FHostname: string;
     FPort: Integer;
     FReadThread: TMQTTReadThread;
     FSocket: TIdTCPClient;
@@ -83,8 +83,8 @@ type
     FUnSubAckEvent: TUnSubAckEvent;
     // Gets a next Message ID and increases the Message ID Increment
     function GetMessageID: TBytes;
-    // Takes a ansistring and converts to An Array of Bytes preceded by 2 Length Bytes.
-    function StrToBytes(str: ansistring; perpendLength: boolean): TBytes;
+    // Takes a string and converts to An Array of Bytes preceded by 2 Length Bytes.
+    function StrToBytes(str: string; perpendLength: boolean): TBytes;
     // Byte Array Helper Functions
     procedure AppendArray(var Dest: TBytes; Source: Array of Byte);
     procedure CopyIntoArray(var DestArray: Array of Byte; SourceArray: Array of Byte;
@@ -95,7 +95,7 @@ type
     function RemainingLength(MessageLength: Integer): TBytes;
     // Variable Header per command creation funcs
     function VariableHeaderConnect(KeepAlive: Word): TBytes;
-    function VariableHeaderPublish(topic: ansistring): TBytes;
+    function VariableHeaderPublish(topic: string): TBytes;
     function VariableHeaderSubscribe: TBytes;
     function VariableHeaderUnsubscribe: TBytes;
     // Helper Function - Puts the seperate component together into an Array of Bytes for transmission
@@ -109,21 +109,21 @@ type
     procedure OnRTPingResp(Sender: TObject);
     procedure OnRTSubAck(Sender: TObject; MessageID: Integer; GrantedQoS: Integer);
     procedure OnRTUnSubAck(Sender: TObject; MessageID: Integer);
-    procedure OnRTPublish(Sender: TObject; topic, Payload: ansistring);
+    procedure OnRTPublish(Sender: TObject; topic, Payload: string);
   public
     function isConnected: boolean;
     function CONNECT: boolean;
     function DISCONNECT: boolean;
     procedure ForceDisconnect;
-    function PUBLISH(topic: ansistring; sPayload: ansistring): boolean; overload;
-    function PUBLISH(topic: ansistring; sPayload: ansistring; Retain: boolean): boolean; overload;
-    function SUBSCRIBE(topic: ansistring): Integer;
-    function UNSUBSCRIBE(topic: ansistring): Integer;
+    function PUBLISH(topic: string; sPayload: string): boolean; overload;
+    function PUBLISH(topic: string; sPayload: string; Retain: boolean): boolean; overload;
+    function SUBSCRIBE(topic: string): Integer;
+    function UNSUBSCRIBE(topic: string): Integer;
     function PINGREQ: boolean;
     constructor Create(Hostname: string; Port: Integer); overload;
     destructor Destroy; override;
 
-    property ClientID: ansistring read FClientID write FClientID;
+    property ClientID: string read FClientID write FClientID;
     property OnConnAck: TConnAckEvent read FConnAckEvent write FConnAckEvent;
     property OnPublish: TPublishEvent read FPublishEvent write FPublishEvent;
     property OnPingResp: TPingRespEvent read FPingRespEvent write FPingRespEvent;
@@ -273,7 +273,7 @@ end;
   @param Retain   Should this message be retained for clients connecting subsequently
   @return Returns whether the Data was written successfully to the socket.
   ------------------------------------------------------------------------------* }
-function TMQTTClient.PUBLISH(topic, sPayload: ansistring; Retain: boolean): boolean;
+function TMQTTClient.PUBLISH(topic, sPayload: string; Retain: boolean): boolean;
 var
   Data: TBytes;
   FH: Byte;
@@ -301,7 +301,7 @@ end;
   @param sPayload   The Actual Payload of the message eg 18 degrees celcius
   @return Returns whether the Data was written successfully to the socket.
   ------------------------------------------------------------------------------* }
-function TMQTTClient.PUBLISH(topic, sPayload: ansistring): boolean;
+function TMQTTClient.PUBLISH(topic, sPayload: string): boolean;
 begin
   Result := PUBLISH(topic, sPayload, False);
 end;
@@ -313,7 +313,7 @@ end;
   @return Returns the Message ID used to send the message for the purpose of comparing
   it to the Message ID used later in the SUBACK event handler.
   ------------------------------------------------------------------------------* }
-function TMQTTClient.SUBSCRIBE(topic: ansistring): Integer;
+function TMQTTClient.SUBSCRIBE(topic: string): Integer;
 var
   Data: TBytes;
   FH: Byte;
@@ -342,7 +342,7 @@ end;
   @return Returns the Message ID used to send the message for the purpose of comparing
   it to the Message ID used later in the UNSUBACK event handler.
   ------------------------------------------------------------------------------* }
-function TMQTTClient.UNSUBSCRIBE(topic: ansistring): Integer;
+function TMQTTClient.UNSUBSCRIBE(topic: string): Integer;
 var
   Data: TBytes;
   FH: Byte;
@@ -384,7 +384,7 @@ begin
   Randomize;
   // Create a Default ClientID as a default. Can be overridden with TMQTTClient.ClientID any time before connection.
   Self.FClientID := 'dMQTTClient' + IntToStr(Random(1000) + 1);
-  Self.FHostname := ansistring(Hostname);
+  Self.FHostname := string(Hostname);
   Self.FPort := Port;
   Self.FMessageID := 1;
   Self.FSocket := TIdTCPClient.Create(nil);
@@ -450,26 +450,18 @@ begin
   end;
 end;
 
-function TMQTTClient.StrToBytes(str: ansistring; perpendLength: boolean): TBytes;
+function TMQTTClient.StrToBytes(str: string; perpendLength: boolean): TBytes;
 var
   i, offset: Integer;
 begin
+  Result := TBytes(TEncoding.ANSI.GetBytes(str));
+
   { This is a UTF-8 hack to give 2 Bytes of Length followed by the string itself. }
   if perpendLength then
   begin
-    SetLength(Result, Length(str) + 2);
-    Result[0] := Length(str) div 256;
-    Result[1] := Length(str) mod 256;
-    offset := 1;
-  end
-  else
-  begin
-    SetLength(Result, Length(str));
-    offset := -1;
-  end;
-  for i := 1 to Length(str) do
-  begin
-    Result[i + offset] := Ord(str[i]);
+    Result := [0, 0] + Result;
+    Result[0] := (Length(Result) - 2) div 256;
+    Result[1] := (Length(Result) - 2) mod 256;
   end;
 end;
 
@@ -527,7 +519,7 @@ begin
   Result[iByteIndex] := KeepAlive;
 end;
 
-function TMQTTClient.VariableHeaderPublish(topic: ansistring): TBytes;
+function TMQTTClient.VariableHeaderPublish(topic: string): TBytes;
 var
   BytesTopic: TBytes;
 begin
@@ -601,7 +593,7 @@ begin
     OnPingResp(Self);
 end;
 
-procedure TMQTTClient.OnRTPublish(Sender: TObject; topic, Payload: ansistring);
+procedure TMQTTClient.OnRTPublish(Sender: TObject; topic, Payload: string);
 begin
   if Assigned(OnPublish) then
     OnPublish(Self, topic, Payload);
