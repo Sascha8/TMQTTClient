@@ -43,6 +43,7 @@ type
     lblLimits: TLabel;
     lblLimits2: TLabel;
     lblSynapse: TLabel;
+    btnPublishRetain: TButton;
     procedure btnConnectClick(Sender: TObject);
     procedure btnDisconnectClick(Sender: TObject);
     procedure btnPublishClick(Sender: TObject);
@@ -55,6 +56,7 @@ type
     procedure btnSubscribeClick(Sender: TObject);
     procedure lblUrlClick(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure btnPublishRetainClick(Sender: TObject);
   private
     fMQTTClient: TMQTTClient;
   public
@@ -103,17 +105,25 @@ begin
   end;
 
   fMQTTClient := TMQTTClient.Create(eIP.Text, StrToInt(ePort.Text));
-  fMQTTClient.OnConnAck := OnConnAck;
-  fMQTTClient.OnPingResp := OnPingResp;
-  fMQTTClient.OnPublish := OnPublish;
-  fMQTTClient.OnSubAck := OnSubAck;
-  fMQTTClient.Connect;
+  try
+    fMQTTClient.OnConnAck := OnConnAck;
+    fMQTTClient.OnPingResp := OnPingResp;
+    fMQTTClient.OnPublish := OnPublish;
+    fMQTTClient.OnSubAck := OnSubAck;
+    fMQTTClient.Connect;
+  except
+    FreeAndNil(fMQTTClient);
+    raise;
+  end;
 end;
 
 procedure TfMain.btnDisconnectClick(Sender: TObject);
 begin
-  fMQTTClient.Disconnect;
-  FreeAndNil(fMQTTClient);
+  if Assigned(fMQTTClient) then
+  begin
+    fMQTTClient.Disconnect;
+    FreeAndNil(fMQTTClient);
+  end;
 end;
 
 procedure TfMain.btnPingClick(Sender: TObject);
@@ -124,6 +134,11 @@ end;
 procedure TfMain.btnPublishClick(Sender: TObject);
 begin
   fMQTTClient.Publish(eTopic.Text, eMessage.Text);
+end;
+
+procedure TfMain.btnPublishRetainClick(Sender: TObject);
+begin
+  fMQTTClient.Publish(eTopic.Text, eMessage.Text, True);
 end;
 
 procedure TfMain.btnSubscribeClick(Sender: TObject);

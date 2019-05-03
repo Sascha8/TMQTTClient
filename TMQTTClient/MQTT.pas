@@ -7,7 +7,8 @@
   Spec - http://publib.boulder.ibm.com/infocenter/wmbhelp/v6r0m0/topic/com.ibm.etools.mft.doc/ac10840_.htm
 
   MIT License -  http://www.opensource.org/licenses/mit-license.php
-  Copyright (c) 2009 Jamie Ingilby
+  Original Copyright (c) 2009 Jamie Ingilby
+  Copyright (c) 2019 Daniele Teti
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -63,9 +64,6 @@ type
     Reserved15 // 15
     );
 
-  TRemainingLength = Array of Byte;
-  TUTF8Text = Array of Byte;
-
   PMQTTClient = ^TMQTTClient;
 
   TMQTTClient = class(TObject)
@@ -86,22 +84,22 @@ type
     // Gets a next Message ID and increases the Message ID Increment
     function GetMessageID: TBytes;
     // Takes a ansistring and converts to An Array of Bytes preceded by 2 Length Bytes.
-    function StrToBytes(str: ansistring; perpendLength: boolean): TUTF8Text;
+    function StrToBytes(str: ansistring; perpendLength: boolean): TBytes;
     // Byte Array Helper Functions
-    procedure AppendArray(var Dest: TUTF8Text; Source: Array of Byte);
+    procedure AppendArray(var Dest: TBytes; Source: Array of Byte);
     procedure CopyIntoArray(var DestArray: Array of Byte; SourceArray: Array of Byte;
       StartIndex: Integer);
     // Message Component Build helpers
     function FixedHeader(MessageType: TMQTTMessageType; Dup: Word; Qos: Word; Retain: Word): Byte;
     // Calculates the Remaining Length bytes of the FixedHeader as per the spec.
-    function RemainingLength(MessageLength: Integer): TRemainingLength;
+    function RemainingLength(MessageLength: Integer): TBytes;
     // Variable Header per command creation funcs
     function VariableHeaderConnect(KeepAlive: Word): TBytes;
     function VariableHeaderPublish(topic: ansistring): TBytes;
     function VariableHeaderSubscribe: TBytes;
     function VariableHeaderUnsubscribe: TBytes;
     // Helper Function - Puts the seperate component together into an Array of Bytes for transmission
-    function BuildCommand(FixedHead: Byte; RemainL: TRemainingLength; VariableHead: TBytes;
+    function BuildCommand(FixedHead: Byte; RemainL: TBytes; VariableHead: TBytes;
       Payload: Array of Byte): TBytes;
     // Internally Write the provided data to the Socket. Wrapper function.
     function SocketWrite(Data: TBytes): boolean;
@@ -149,41 +147,50 @@ uses
 function TMQTTClient.CONNECT: boolean;
 var
   Data: TBytes;
-  RL: TRemainingLength;
+  RL: TBytes;
   VH: TBytes;
   FH: Byte;
-  Payload: TUTF8Text;
+  Payload: TBytes;
 begin
   Result := False;
 
-  if FSocket = nil then
-  begin
-    FH := FixedHeader(MQTT.CONNECT, 0, 0, 0);
-    VH := VariableHeaderConnect(40);
-    SetLength(Payload, 0);
-    AppendArray(Payload, StrToBytes(FClientID, true));
-    AppendArray(Payload, StrToBytes('lwt', true));
-    AppendArray(Payload, StrToBytes(FClientID + ' died', true));
-    RL := RemainingLength(Length(VH) + Length(Payload));
-    Data := BuildCommand(FH, RL, VH, Payload);
+  // if FSocket = nil then
+  // begin
+  FH := FixedHeader(MQTT.CONNECT, 0, 0, 0);
+  VH := VariableHeaderConnect(40);
+  SetLength(Payload, 0);
+  AppendArray(Payload, StrToBytes(FClientID, true));
+  AppendArray(Payload, StrToBytes('lwt', true));
+  AppendArray(Payload, StrToBytes(FClientID + ' died', true));
+  RL := RemainingLength(Length(VH) + Length(Payload));
+  Data := BuildCommand(FH, RL, VH, Payload);
 
-    // Now to Connect the Socket and send the Data.
-    FSocket := TIdTCPClient.Create(nil);
-    FSocket.CONNECT(Self.FHostname, Self.FPort);
-    FisConnected := true;
-    if SocketWrite(Data) then
+  // Now to Connect the Socket and send the Data.
+  // FreeAndNil(FSocket);
+  // FSocket := TIdTCPClient.Create(nil);
+  FSocket.ReuseSocket := TIdReuseSocket.rsFalse;
+  FSocket.ConnectTimeout := 5000;
+  FSocket.ReadTimeout := 2000;
+  FSocket.Host := FHostname;
+  FSocket.Port := FPort;
+  FSocket.CONNECT; // (Self.FHostname, Self.FPort);
+  FisConnected := true;
+  if SocketWrite(Data) then
+  begin
+    Result := true;
+    if not Assigned(FReadThread) then
     begin
-      Result := true;
-      FReadThread := TMQTTReadThread.Create(FSocket);
+      FReadThread := TMQTTReadThread.Create(Self, FSocket);
       FReadThread.OnConnAck := Self.OnRTConnAck;
       FReadThread.OnPublish := Self.OnRTPublish;
       FReadThread.OnPingResp := Self.OnRTPingResp;
       FReadThread.OnSubAck := Self.OnRTSubAck;
-      FReadThread.Resume;
-    end
-    else
-      Result := False;
+      FReadThread.Start;
+    end;
   end;
+  // else
+  // Result := False;
+  // end;
 end;
 
 { *------------------------------------------------------------------------------
@@ -209,7 +216,6 @@ begin
     FReadThread := nil;
     FSocket.DISCONNECT;
     FisConnected := False;
-    FSocket.Free;
   end
   else
     Result := False;
@@ -271,9 +277,9 @@ function TMQTTClient.PUBLISH(topic, sPayload: ansistring; Retain: boolean): bool
 var
   Data: TBytes;
   FH: Byte;
-  RL: TRemainingLength;
+  RL: TBytes;
   VH: TBytes;
-  Payload: TUTF8Text;
+  Payload: TBytes;
 begin
   Result := False;
   FH := FixedHeader(MQTT.PUBLISH, 0, 0, Ord(Retain));
@@ -311,9 +317,9 @@ function TMQTTClient.SUBSCRIBE(topic: ansistring): Integer;
 var
   Data: TBytes;
   FH: Byte;
-  RL: TRemainingLength;
+  RL: TBytes;
   VH: TBytes;
-  Payload: TUTF8Text;
+  Payload: TBytes;
 begin
   FH := FixedHeader(MQTT.SUBSCRIBE, 0, 1, 0);
   VH := VariableHeaderSubscribe;
@@ -340,9 +346,9 @@ function TMQTTClient.UNSUBSCRIBE(topic: ansistring): Integer;
 var
   Data: TBytes;
   FH: Byte;
-  RL: TRemainingLength;
+  RL: TBytes;
   VH: TBytes;
-  Payload: TUTF8Text;
+  Payload: TBytes;
 begin
   FH := FixedHeader(MQTT.UNSUBSCRIBE, 0, 0, 0);
   VH := VariableHeaderUnsubscribe;
@@ -381,6 +387,7 @@ begin
   Self.FHostname := ansistring(Hostname);
   Self.FPort := Port;
   Self.FMessageID := 1;
+  Self.FSocket := TIdTCPClient.Create(nil);
 end;
 
 destructor TMQTTClient.Destroy;
@@ -393,6 +400,7 @@ begin
   // FReadThread.Free;
   // FReadThread := nil;
   // Self.FSocket.Free;
+  FreeAndNil(FSocket);
   inherited;
 end;
 
@@ -442,7 +450,7 @@ begin
   end;
 end;
 
-function TMQTTClient.StrToBytes(str: ansistring; perpendLength: boolean): TUTF8Text;
+function TMQTTClient.StrToBytes(str: ansistring; perpendLength: boolean): TBytes;
 var
   i, offset: Integer;
 begin
@@ -465,7 +473,7 @@ begin
   end;
 end;
 
-function TMQTTClient.RemainingLength(MessageLength: Integer): TRemainingLength;
+function TMQTTClient.RemainingLength(MessageLength: Integer): TBytes;
 var
   byteindex: Integer;
   digit: Integer;
@@ -496,7 +504,7 @@ const
 var
   Qos, Retain: Word;
   iByteIndex: Integer;
-  ProtoBytes: TUTF8Text;
+  ProtoBytes: TBytes;
 begin
   // Set the Length of our variable header array.
   SetLength(Result, 12);
@@ -521,7 +529,7 @@ end;
 
 function TMQTTClient.VariableHeaderPublish(topic: ansistring): TBytes;
 var
-  BytesTopic: TUTF8Text;
+  BytesTopic: TBytes;
 begin
   BytesTopic := StrToBytes(topic, true);
   SetLength(Result, Length(BytesTopic));
@@ -546,7 +554,7 @@ begin
   Move(SourceArray[0], DestArray[StartIndex], Length(SourceArray));
 end;
 
-procedure TMQTTClient.AppendArray(var Dest: TUTF8Text; Source: Array of Byte);
+procedure TMQTTClient.AppendArray(var Dest: TBytes; Source: Array of Byte);
 var
   DestLen: Integer;
 begin
@@ -555,7 +563,7 @@ begin
   Move(Source, Dest[DestLen], Length(Source));
 end;
 
-function TMQTTClient.BuildCommand(FixedHead: Byte; RemainL: TRemainingLength;
+function TMQTTClient.BuildCommand(FixedHead: Byte; RemainL: TBytes;
   VariableHead: TBytes; Payload: Array of Byte): TBytes;
 var
   iNextIndex: Integer;

@@ -2,7 +2,7 @@ object fMain: TfMain
   Left = 0
   Top = 0
   Caption = 'TMQTTClient Test Project'
-  ClientHeight = 413
+  ClientHeight = 464
   ClientWidth = 426
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -31,15 +31,15 @@ object fMain: TfMain
     Layout = tlCenter
   end
   object lnlMQTTInfo: TLabel
-    Left = 8
-    Top = 337
+    Left = 9
+    Top = 385
     Width = 194
     Height = 13
     Caption = 'For more information about MQTT goto: '
   end
   object lblMQTTUrl: TLabel
-    Left = 208
-    Top = 337
+    Left = 209
+    Top = 385
     Width = 102
     Height = 13
     Cursor = crHandPoint
@@ -53,15 +53,15 @@ object fMain: TfMain
     OnClick = lblUrlClick
   end
   object lblPrimarilyTested: TLabel
-    Left = 8
-    Top = 356
+    Left = 9
+    Top = 404
     Width = 154
     Height = 13
     Caption = 'Server primarily tested against: '
   end
   object lblRSMBUrl: TLabel
-    Left = 168
-    Top = 356
+    Left = 169
+    Top = 404
     Width = 108
     Height = 13
     Cursor = crHandPoint
@@ -75,8 +75,8 @@ object fMain: TfMain
     OnClick = lblUrlClick
   end
   object lblLimits: TLabel
-    Left = 8
-    Top = 374
+    Left = 9
+    Top = 422
     Width = 398
     Height = 13
     Caption = 
@@ -84,8 +84,8 @@ object fMain: TfMain
       'he MQTT Protocol'
   end
   object lblLimits2: TLabel
-    Left = 8
-    Top = 392
+    Left = 9
+    Top = 440
     Width = 288
     Height = 13
     Caption = 'but is a good place to start in learning how to use the client.'
@@ -169,7 +169,7 @@ object fMain: TfMain
   end
   object btnSubscribe: TButton
     Left = 343
-    Top = 179
+    Top = 219
     Width = 75
     Height = 25
     Caption = 'Subscribe'
@@ -178,17 +178,26 @@ object fMain: TfMain
   end
   object eSubTopic: TEdit
     Left = 135
-    Top = 179
+    Top = 219
     Width = 202
     Height = 21
     TabOrder = 9
     Text = '/dev/test'
   end
   object mStatus: TMemo
-    Left = 8
-    Top = 210
+    Left = 9
+    Top = 258
     Width = 409
     Height = 121
     TabOrder = 10
+  end
+  object btnPublishRetain: TButton
+    Left = 343
+    Top = 179
+    Width = 75
+    Height = 25
+    Caption = 'Publish Retain'
+    TabOrder = 11
+    OnClick = btnPublishRetainClick
   end
 end

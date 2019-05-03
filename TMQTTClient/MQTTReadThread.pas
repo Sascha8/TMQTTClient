@@ -4,7 +4,9 @@
   TMQTTClient library (MQTT.pas).
 
   MIT License -  http://www.opensource.org/licenses/mit-license.php
-  Copyright (c) 2009 Jamie Ingilby
+  Original Copyright (c) 2009 Jamie Ingilby
+  Copyright (c) 2019 Daniele Teti
+
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -48,7 +50,7 @@ type
   End;
 
 Type
-  TRxStates = (RX_FIXED_HEADER, RX_LENGTH, RX_DATA, RX_ERROR);
+  TRxStates = (RX_FIXED_HEADER, RX_LENGTH, RX_DATA, RX_ERROR, RX_DISCONNECTED);
 
   TConnAckEvent = procedure(Sender: TObject; ReturnCode: integer) of object;
   TPublishEvent = procedure(Sender: TObject; topic, payload: ansistring) of object;
@@ -66,6 +68,7 @@ Type
     FPingRespEvent: TPingRespEvent;
     FSubAckEvent: TSubAckEvent;
     FUnSubAckEvent: TUnSubAckEvent;
+    fOwner: TObject;
     // This takes a 1-4 Byte Remaining Length bytes as per the spec and returns the Length value it represents
     // Increases the size of the Dest array and Appends NewBytes to the end of DestArray
     // Takes a 2 Byte Length array and returns the length of the ansistring it preceeds as per the spec.
@@ -75,7 +78,7 @@ Type
   protected
     procedure Execute; override;
   public
-    constructor Create(Socket: TIdTCPClient);
+    constructor Create(Owner: TObject; Socket: TIdTCPClient);
     property OnConnAck: TConnAckEvent read fConnAckEvent write fConnAckEvent;
     property OnPublish: TPublishEvent read FPublishEvent write FPublishEvent;
     property OnPingResp: TPingRespEvent read FPingRespEvent write FPingRespEvent;
@@ -86,15 +89,18 @@ Type
 implementation
 
 uses
-  MQTT,
-  IdStackConsts;
+  IdStackConsts,
+  IdException,
+  IdStack,
+  MQTT;
 
 { TMQTTReadThread }
 
-constructor TMQTTReadThread.Create(Socket: TIdTCPClient);
+constructor TMQTTReadThread.Create(Owner: TObject; Socket: TIdTCPClient);
 begin
   inherited Create(true);
   fTCPClient := Socket;
+  fOwner := Owner;
   FreeOnTerminate := False;
 end;
 
@@ -104,6 +110,7 @@ var
   remainingLength: integer;
   digit: integer;
   multiplier: integer;
+  lConnRetry: integer;
 begin
   rxState := RX_FIXED_HEADER;
   while not Terminated do
@@ -114,19 +121,33 @@ begin
           multiplier := 1;
           remainingLength := 0;
           fCurrentMessage.Data := nil;
-          // CurrentMessage.FixedHeader := FPSocket^.RecvByte(1000);
           try
-            if fTCPClient.IOHandler.CheckForDataOnSource(1000) then
+            if fTCPClient.IOHandler.InputBufferIsEmpty then
+            begin
+              fTCPClient.IOHandler.CheckForDataOnSource(2000);
+            end;
+            if not fTCPClient.IOHandler.InputBufferIsEmpty then
             begin
               fCurrentMessage.FixedHeader := fTCPClient.IOHandler.ReadByte;
               rxState := RX_LENGTH;
-            end
-            else
-            begin
-              Continue;
             end;
           except
-            rxState := RX_ERROR
+            on E: EIdSocketError do
+            begin
+              if E.LastError <> 10054 then
+              // if fTCPClient.IOHandler.Connected then
+              begin
+                rxState := RX_ERROR;
+              end
+              else
+              begin
+                rxState := RX_DISCONNECTED;
+              end;
+            end;
+            on Ex: Exception do
+            begin
+              raise;
+            end;
           end;
 
           // if (FPSocket^.LastError = Id_WSAETIMEDOUT { ESysETIMEDOUT } ) then
@@ -153,7 +174,6 @@ begin
             end;
           except
             rxState := RX_ERROR;
-            Continue;
           end;
           // if (FPSocket^.LastError = Id_WSAETIMEDOUT { ESysETIMEDOUT } ) then
           // Continue;
@@ -185,16 +205,49 @@ begin
           // end;
           try
             fTCPClient.IOHandler.ReadBytes(fCurrentMessage.Data, remainingLength, False);
-            Synchronize(HandleData);
             rxState := RX_FIXED_HEADER;
+            Synchronize(HandleData);
           except
             rxState := RX_ERROR;
           end;
-          Continue;
         end;
       RX_ERROR:
         begin
-          sleep(1000);
+          Sleep(1000);
+          rxState := RX_FIXED_HEADER;
+        end;
+
+      RX_DISCONNECTED:
+        begin
+          try
+            Inc(lConnRetry);
+            Sleep(1000);
+            if lConnRetry < 5 then
+            begin
+              Continue;
+            end;
+            lConnRetry := 0;
+            try
+              fTCPClient.DisconnectNotifyPeer;
+              fTCPClient.Disconnect;
+            except
+            end;
+            // fTCPClient.Connect('127.0.0.1', 1883);
+            TThread.Synchronize(nil,
+              procedure
+              begin
+                try
+                  if TMQTTClient(fOwner).Connect then
+                  begin
+                    rxState := RX_FIXED_HEADER;
+                  end;
+                except
+                  lConnRetry := 0;
+                end;
+              end);
+          except
+            lConnRetry := 0;
+          end;
         end;
     end;
   end;
@@ -228,8 +281,7 @@ begin
       if Assigned(OnConnAck) then
         OnConnAck(Self, ConnectReturn);
     end
-    else
-      if (MessageType = Ord(MQTT.PUBLISH)) then
+    else if (MessageType = Ord(MQTT.PUBLISH)) then
     begin
       // Read the Length Bytes
       DataLen := BytesToStrLength(Copy(TBytes(fCurrentMessage.Data), 0, 2));
@@ -244,8 +296,7 @@ begin
       if Assigned(OnPublish) then
         OnPublish(Self, topic, payload);
     end
-    else
-      if (MessageType = Ord(MQTT.SUBACK)) then
+    else if (MessageType = Ord(MQTT.SUBACK)) then
     begin
       // Reading the Message ID
       ResponseVH := Copy(TBytes(fCurrentMessage.Data), 0, 2);
@@ -260,8 +311,7 @@ begin
       if Assigned(OnSubAck) then
         OnSubAck(Self, DataLen, QoS);
     end
-    else
-      if (MessageType = Ord(MQTT.UNSUBACK)) then
+    else if (MessageType = Ord(MQTT.UNSUBACK)) then
     begin
       // Read the Message ID for the event handler
       ResponseVH := Copy(TBytes(fCurrentMessage.Data), 0, 2);
@@ -269,8 +319,7 @@ begin
       if Assigned(OnUnSubAck) then
         OnUnSubAck(Self, DataLen);
     end
-    else
-      if (MessageType = Ord(MQTT.PINGRESP)) then
+    else if (MessageType = Ord(MQTT.PINGRESP)) then
     begin
       if Assigned(OnPingResp) then
         OnPingResp(Self);
