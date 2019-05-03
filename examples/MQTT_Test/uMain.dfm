@@ -147,7 +147,7 @@ object fMain: TfMain
     Width = 202
     Height = 21
     TabOrder = 5
-    Text = 'mallard'
+    Text = 'localhost'
   end
   object ePort: TEdit
     Left = 216

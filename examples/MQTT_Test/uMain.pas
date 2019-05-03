@@ -3,8 +3,20 @@ unit uMain;
 interface
 
 uses
-  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, StdCtrls, MQTT, MQTTReadThread, ExtCtrls, ShellAPI;
+  Windows,
+  Messages,
+  SysUtils,
+  Variants,
+  Classes,
+  Graphics,
+  Controls,
+  Forms,
+  Dialogs,
+  StdCtrls,
+  MQTT,
+  MQTTReadThread,
+  ExtCtrls,
+  ShellAPI;
 
 type
   TfMain = class(TForm)
@@ -35,7 +47,7 @@ type
     procedure OnPingResp(Sender: TObject);
     procedure OnSubAck(Sender: TObject; MessageID: integer; GrantedQoS: integer);
     procedure OnUnSubAck(Sender: TObject);
-    procedure OnPublish(Sender: TObject; topic, payload: string);
+    procedure OnPublish(Sender: TObject; topic, payload: ansistring);
     procedure btnSubscribeClick(Sender: TObject);
     procedure lblUrlClick(Sender: TObject);
   private
@@ -53,9 +65,10 @@ implementation
 
 {$R *.dfm}
 
-procedure TfMain.OnPublish(Sender: TObject; topic, payload: string);
+
+procedure TfMain.OnPublish(Sender: TObject; topic, payload: ansistring);
 begin
-  mStatus.Lines.Add('Publish Received. Topic: '+ topic + ' Payload: ' + payload);
+  mStatus.Lines.Add('Publish Received. Topic: ' + topic + ' Payload: ' + payload);
 end;
 
 procedure TfMain.OnSubAck(Sender: TObject; MessageID: integer; GrantedQoS: integer);
@@ -110,7 +123,8 @@ end;
 
 procedure TfMain.lblUrlClick(Sender: TObject);
 begin
-  ShellExecute(self.WindowHandle,'open',PChar((Sender as TLabel).Caption),nil,nil, SW_SHOWNORMAL);
+  ShellExecute(self.WindowHandle, 'open', PChar((Sender as TLabel).Caption), nil, nil,
+    SW_SHOWNORMAL);
 end;
 
 end.

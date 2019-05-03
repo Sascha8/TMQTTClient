@@ -12,3 +12,4 @@ bin/*
 *.ppu
 *.*~
 examples/embeddedApp/embeddedApp
+*.res
