@@ -36,7 +36,10 @@ interface
 uses
   SysUtils,
   Classes,
-  blcksock,
+  IdBaseComponent,
+  IdComponent,
+  IdTCPConnection,
+  IdTCPClient,
   MQTTReadThread;
 
 type
@@ -71,7 +74,7 @@ type
     FHostname: ansistring;
     FPort: Integer;
     FReadThread: TMQTTReadThread;
-    FSocket: TTCPBlockSocket;
+    FSocket: TIdTCPClient;
     FMessageID: Integer;
     FisConnected: boolean;
 
@@ -132,6 +135,9 @@ type
 
 implementation
 
+uses
+  IdGlobal;
+
 { TMQTTClient }
 
 { *------------------------------------------------------------------------------
@@ -162,13 +168,13 @@ begin
     Data := BuildCommand(FH, RL, VH, Payload);
 
     // Now to Connect the Socket and send the Data.
-    FSocket := TTCPBlockSocket.Create;
-    FSocket.CONNECT(ansistring(Self.FHostname), IntToStr(Self.FPort));
+    FSocket := TIdTCPClient.Create(nil);
+    FSocket.CONNECT(Self.FHostname, Self.FPort);
     FisConnected := true;
     if SocketWrite(Data) then
     begin
       Result := true;
-      FReadThread := TMQTTReadThread.Create(@FSocket);
+      FReadThread := TMQTTReadThread.Create(FSocket);
       FReadThread.OnConnAck := Self.OnRTConnAck;
       FReadThread.OnPublish := Self.OnRTPublish;
       FReadThread.OnPingResp := Self.OnRTPingResp;
@@ -198,7 +204,10 @@ begin
   begin
     Result := true;
     FReadThread.Terminate;
-    FSocket.CloseSocket;
+    // FSocket.CloseSocket;
+    FReadThread.Free;
+    FReadThread := nil;
+    FSocket.DISCONNECT;
     FisConnected := False;
     FSocket.Free;
   end
@@ -218,7 +227,8 @@ begin
   end;
   if FSocket <> nil then
   begin
-    FSocket.CloseSocket;
+    // FSocket.CloseSocket;
+    FSocket.DISCONNECT;
     FSocket.Free;
     FSocket := nil;
   end;
@@ -375,7 +385,14 @@ end;
 
 destructor TMQTTClient.Destroy;
 begin
-  Self.FSocket.Free;
+  if isConnected then
+  begin
+    DISCONNECT;
+  end;
+  // FReadThread.Terminate;
+  // FReadThread.Free;
+  // FReadThread := nil;
+  // Self.FSocket.Free;
   inherited;
 end;
 
@@ -411,11 +428,17 @@ begin
   // Returns whether the Data was successfully written to the socket.
   if isConnected then
   begin
-    sentData := FSocket.SendBuffer(Pointer(Data), Length(Data));
-    if sentData = Length(Data) then
-      Result := true
-    else
+    try
+      FSocket.IOHandler.Write(TidBytes(Data), Length(Data));
+      Result := true;
+    except
       Result := False;
+    end;
+    // sentData := FSocket.SendBuffer(Pointer(Data), Length(Data));
+    // if sentData = Length(Data) then
+    // Result := true
+    // else
+    // Result := False;
   end;
 end;
 

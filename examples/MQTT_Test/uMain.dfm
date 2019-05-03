@@ -11,6 +11,7 @@ object fMain: TfMain
   Font.Name = 'Tahoma'
   Font.Style = []
   OldCreateOrder = False
+  OnClose = FormClose
   PixelsPerInch = 96
   TextHeight = 13
   object lblHeader: TLabel
@@ -22,10 +23,10 @@ object fMain: TfMain
     AutoSize = False
     Caption = 'Sample Client'
     Font.Charset = DEFAULT_CHARSET
-    Font.Color = clNavy
-    Font.Height = -21
+    Font.Color = clWindowText
+    Font.Height = -29
     Font.Name = 'Tahoma'
-    Font.Style = [fsBold, fsUnderline]
+    Font.Style = []
     ParentFont = False
     Layout = tlCenter
   end
@@ -61,10 +62,10 @@ object fMain: TfMain
   object lblRSMBUrl: TLabel
     Left = 168
     Top = 356
-    Width = 181
+    Width = 108
     Height = 13
     Cursor = crHandPoint
-    Caption = 'http://alphaworks.ibm.com/tech/rsmb'
+    Caption = 'https://mosquitto.org/'
     Font.Charset = DEFAULT_CHARSET
     Font.Color = clBlue
     Font.Height = -11
@@ -75,7 +76,7 @@ object fMain: TfMain
   end
   object lblLimits: TLabel
     Left = 8
-    Top = 375
+    Top = 374
     Width = 398
     Height = 13
     Caption = 

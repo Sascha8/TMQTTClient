@@ -16,7 +16,11 @@ uses
   MQTT,
   MQTTReadThread,
   ExtCtrls,
-  ShellAPI;
+  ShellAPI,
+  IdBaseComponent,
+  IdComponent,
+  IdTCPConnection,
+  IdTCPClient;
 
 type
   TfMain = class(TForm)
@@ -50,15 +54,15 @@ type
     procedure OnPublish(Sender: TObject; topic, payload: ansistring);
     procedure btnSubscribeClick(Sender: TObject);
     procedure lblUrlClick(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
   private
-    { Private declarations }
+    fMQTTClient: TMQTTClient;
   public
     { Public declarations }
   end;
 
 var
   fMain: TfMain;
-  MQTTClient: TMQTTClient;
   fRL: TBytes;
 
 implementation
@@ -93,32 +97,43 @@ end;
 
 procedure TfMain.btnConnectClick(Sender: TObject);
 begin
-  MQTTClient := TMQTTClient.Create(eIP.Text, StrToInt(ePort.Text));
-  MQTTClient.OnConnAck := OnConnAck;
-  MQTTClient.OnPingResp := OnPingResp;
-  MQTTClient.OnPublish := OnPublish;
-  MQTTClient.OnSubAck := OnSubAck;
-  MQTTClient.Connect;
+  if Assigned(fMQTTClient) then
+  begin
+    Exit;
+  end;
+
+  fMQTTClient := TMQTTClient.Create(eIP.Text, StrToInt(ePort.Text));
+  fMQTTClient.OnConnAck := OnConnAck;
+  fMQTTClient.OnPingResp := OnPingResp;
+  fMQTTClient.OnPublish := OnPublish;
+  fMQTTClient.OnSubAck := OnSubAck;
+  fMQTTClient.Connect;
 end;
 
 procedure TfMain.btnDisconnectClick(Sender: TObject);
 begin
-  MQTTClient.Disconnect;
+  fMQTTClient.Disconnect;
+  FreeAndNil(fMQTTClient);
 end;
 
 procedure TfMain.btnPingClick(Sender: TObject);
 begin
-  MQTTClient.PingReq;
+  fMQTTClient.PingReq;
 end;
 
 procedure TfMain.btnPublishClick(Sender: TObject);
 begin
-  MQTTClient.Publish(eTopic.Text, eMessage.Text);
+  fMQTTClient.Publish(eTopic.Text, eMessage.Text);
 end;
 
 procedure TfMain.btnSubscribeClick(Sender: TObject);
 begin
-  MQTTClient.Subscribe(eSubTopic.Text);
+  fMQTTClient.Subscribe(eSubTopic.Text);
+end;
+
+procedure TfMain.FormClose(Sender: TObject; var Action: TCloseAction);
+begin
+  FreeAndNil(fMQTTClient);
 end;
 
 procedure TfMain.lblUrlClick(Sender: TObject);
