@@ -1,7 +1,11 @@
 {
   -------------------------------------------------
+
+
   MQTT.pas -  A Library for Publishing and Subscribing to messages from an MQTT Message
   broker such as the RSMB (http://alphaworks.ibm.com/tech/rsmb).
+  Tested with Delphi Berlin with Moquitto Broker v1.6.12
+
 
   MQTT - http://mqtt.org/
   Spec - http://publib.boulder.ibm.com/infocenter/wmbhelp/v6r0m0/topic/com.ibm.etools.mft.doc/ac10840_.htm
@@ -9,6 +13,7 @@
   MIT License -  http://www.opensource.org/licenses/mit-license.php
   Original Copyright (c) 2009 Jamie Ingilby
   Copyright (c) 2019 Daniele Teti
+  Copyright (c) 2020 Sascha Ott
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
@@ -34,14 +39,11 @@ unit MQTT;
 
 interface
 
+
+
 uses
-  SysUtils,
-  Classes,
-  IdBaseComponent,
-  IdComponent,
-  IdTCPConnection,
-  IdTCPClient,
-  IdGlobal;
+  SysUtils,Vcl.ExtCtrls,Classes,
+  IdBaseComponent,IdComponent,IdTCPConnection,IdTCPClient,IdGlobal;
 
 type
   TBytes = array of Byte;
@@ -61,6 +63,7 @@ type
   TConnError = procedure(Sender: TObject; ErrMessage: String) of object;
   TSubAckEvent = procedure(Sender: TObject; MessageID: integer; GrantedQoS: integer) of object;
   TUnSubAckEvent = procedure(Sender: TObject; MessageID: integer) of object;
+
 
   // Message type. 4 Bit unsigned.
   TMQTTMessageType = (
@@ -87,6 +90,9 @@ type
     FClientID: string;
     FHostname: string;
     FPort: integer;
+    fIsTerminated:Boolean;
+    fKeepAliveTimer:TTimer;
+		fKeepAlivePeriod :Cardinal;
     FTCPClient: TIdTCPClient;
     FMessageID: integer;
     fCurrentMessage: TMQTTMessage;
@@ -97,14 +103,17 @@ type
     FUnSubAckEvent: TUnSubAckEvent;
     FDisconnectEvent: TDisconnectEvent;
     fConnError: TConnError;
+
+
     // Gets a next Message ID and increases the Message ID Increment
+		procedure OnThreadDone(ASender : TObject);
+    procedure DoKeepAlive(ASender : TObject);
     function GetMessageID: TBytes;
     // Takes a string and converts to An Array of Bytes preceded by 2 Length Bytes.
     function StrToBytes(str: string; perpendLength: boolean): TBytes;
     // Byte Array Helper Functions
     procedure AppendArray(var aDest: TBytes; aSource: Array of Byte);
-    procedure CopyIntoArray(var aDestArray: Array of Byte; aSourceArray: Array of Byte;
-      StartIndex: integer);
+    procedure CopyIntoArray(var aDestArray: Array of Byte; aSourceArray: Array of Byte; StartIndex: integer);
     // Message Component Build helpers
     function FixedHeader(aMessageType: TMQTTMessageType; aDup: Word; aQos: Word; aRetain: Word): Byte;
     // Calculates the Remaining Length bytes of the FixedHeader as per the spec.
@@ -115,8 +124,7 @@ type
     function VariableHeaderSubscribe: TBytes;
     function VariableHeaderUnsubscribe: TBytes;
     // Helper Function - Puts the seperate component together into an Array of Bytes for transmission
-    function BuildCommand(aFixedHead: Byte; aRemainL: TBytes; aVariableHead: TBytes;
-      aPayload: Array of Byte): TBytes;
+    function BuildCommand(aFixedHead: Byte; aRemainL: TBytes; aVariableHead: TBytes; aPayload: Array of Byte): TBytes;
     // Internally Write the provided data to the Socket. Wrapper function.
     procedure SocketWrite(Data: TBytes);
     /// /
@@ -132,24 +140,31 @@ type
   protected
     procedure Execute; override;
   public
+    constructor Create(aHostname: string; aPort: integer; aKeepAliveSeconds : Cardinal); overload;
+    constructor Create(aHostname: string; aPort: integer); overload;
+    destructor Destroy; override;
     function PUBLISH(aTopic: string; aPayload: string): boolean; overload;
     function PUBLISH(aTopic: string; aPayload: string; aRetain: boolean): boolean; overload;
     function SUBSCRIBE(aTopic: string): integer;
     function UNSUBSCRIBE(aTopic: string): integer;
     procedure PINGREQ;
-    constructor Create(aHostname: string; aPort: integer); overload;
-    destructor Destroy; override;
+
     property ClientID: string read FClientID write FClientID;
+    property KeepAlivePeriod: cardinal read fKeepAlivePeriod write fKeepAlivePeriod;
+    property isTerminated: boolean read fIsTerminated;
+
     property OnConnAck: TConnAckEvent read FConnAckEvent write FConnAckEvent;
-    property OnPublish: TPublishEvent read FPublishEvent write FPublishEvent;
+    property OnConnError: TConnError read fConnError write fConnError;
+    property OnDisconnect: TDisconnectEvent read FDisconnectEvent write FDisconnectEvent;
     property OnPingResp: TPingRespEvent read FPingRespEvent write FPingRespEvent;
     property OnSubAck: TSubAckEvent read FSubAckEvent write FSubAckEvent;
     property OnUnSubAck: TUnSubAckEvent read FUnSubAckEvent write FUnSubAckEvent;
-    property OnDisconnect: TDisconnectEvent read FDisconnectEvent write FDisconnectEvent;
-    property OnConnError: TConnError read fConnError write fConnError;
+    property OnPublish: TPublishEvent read FPublishEvent write FPublishEvent;
   end;
 
 implementation
+
+
 
 uses
   IdStack;
@@ -162,6 +177,48 @@ uses
   protocol. Check for a CONACK message to verify successful connection.
   @return Returns whether the Data was written successfully to the socket.
   ------------------------------------------------------------------------------* }
+constructor TMQTTClient.Create(aHostname: string; aPort: integer; aKeepAliveSeconds : Cardinal);
+begin
+	//init none thread stuff...
+  Randomize;
+  // Create a Default ClientID as a default. Can be overridden with TMQTTClient.ClientID any time before connection.
+  FClientID := 'dMQTTClient' + IntToStr(Random(1000) + 1);
+  FHostname := string(aHostname);
+  FPort := aPort;
+  fKeepAlivePeriod:=aKeepAliveSeconds * 1000;
+  FMessageID := 1;
+	fKeepAliveTimer:=TTimer.Create(nil);
+  fKeepAliveTimer.Interval:=fKeepAlivePeriod;
+  fKeepAliveTimer.OnTimer:=DoKeepAlive;
+	fKeepAliveTimer.Enabled:=True;
+
+  // Create and start thread.
+  inherited Create(false);
+  NameThreadForDebugging('TMQTTThread');
+  OnTerminate := OnThreadDone;
+end;
+
+constructor TMQTTClient.Create(aHostname: string; aPort: integer);
+Begin
+  Create(aHostname,aPort,60);
+End;
+
+destructor TMQTTClient.Destroy;
+begin
+  if IsConnected then
+  begin
+    DISCONNECT;
+  end;
+  freeAndNil(FTCPClient);
+  fKeepAliveTimer.Free;
+  inherited;
+end;
+
+procedure TMQTTClient.DoKeepAlive(ASender : TObject);
+begin
+	PINGREQ();
+end;
+
 procedure TMQTTClient.CONNECT;
 var
   Data: TBytes;
@@ -169,9 +226,9 @@ var
   VH: TBytes;
   FH: Byte;
   lPayload: TBytes;
-begin
+begin  // ToDo make lwt configureable
   FH := FixedHeader(MQTT.CONNECT, 0, 0, 0);
-  VH := VariableHeaderConnect(40);
+  VH := VariableHeaderConnect(fKeepAlivePeriod);
   SetLength(lPayload, 0);
   AppendArray(lPayload, StrToBytes(FClientID, true));
   AppendArray(lPayload, StrToBytes('lwt', true));
@@ -197,6 +254,16 @@ begin
   FTCPClient.DISCONNECT;
 end;
 
+
+procedure TMQTTClient.OnThreadDone(ASender : TObject);
+begin
+	//Thread is now terminated and ready for freeing and niling
+  //query this property from main thread before exiting application.
+	fIsTerminated:=true;
+end;
+
+
+
 procedure TMQTTClient.Execute;
 var
   lRXState: TRxStates;
@@ -204,6 +271,7 @@ var
   lDigit: integer;
   lMultiplier: integer;
 begin
+	fIsTerminated:=False;
   lMultiplier := -1;
   lRemainingLength := -1;
   lRXState := RX_CONNECTION;
@@ -213,7 +281,7 @@ begin
       RX_CONNECTION:
         begin
           try
-            FreeAndNil(FTCPClient);
+            if FTCPClient<> nil then FreeAndNil(FTCPClient);
           except
           end;
           FTCPClient := TIdTCPClient.Create(nil);
@@ -244,7 +312,7 @@ begin
           try
             if FTCPClient.IOHandler.InputBufferIsEmpty then
             begin
-              FTCPClient.IOHandler.CheckForDataOnSource(2000);
+              FTCPClient.IOHandler.CheckForDataOnSource(500);
             end;
             if Terminated then
             begin
@@ -267,7 +335,6 @@ begin
             on E: EIdSocketError do
             begin
               if E.LastError <> 10054 then
-              // if fTCPClient.IOHandler.Connected then
               begin
                 lRXState := RX_ERROR;
               end
@@ -285,7 +352,6 @@ begin
               raise;
             end;
           end;
-
         end;
       RX_LENGTH:
         begin
@@ -455,34 +521,7 @@ end;
   @param Port   Port of the MQTT Server
   @return Instance
   ------------------------------------------------------------------------------* }
-constructor TMQTTClient.Create(aHostname: string; aPort: integer);
-begin
-  inherited Create(true);
-  Randomize;
-  // Create a Default ClientID as a default. Can be overridden with TMQTTClient.ClientID any time before connection.
-  FClientID := 'dMQTTClient' + IntToStr(Random(1000) + 1);
-  FHostname := string(aHostname);
-  FPort := aPort;
-  FMessageID := 1;
-  FTCPClient := nil;
-end;
-
-destructor TMQTTClient.Destroy;
-begin
-  if IsConnected then
-  begin
-    DISCONNECT;
-  end;
-  // FReadThread.Terminate;
-  // FReadThread.Free;
-  // FReadThread := nil;
-  // Self.FSocket.Free;
-  FreeAndNil(FTCPClient);
-  inherited;
-end;
-
-function TMQTTClient.FixedHeader(aMessageType: TMQTTMessageType; aDup, aQos,
-  aRetain: Word): Byte;
+function TMQTTClient.FixedHeader(aMessageType: TMQTTMessageType; aDup, aQos, aRetain: Word): Byte;
 begin
   { Fixed Header Spec:
     bit	   |7 6	5	4	    | |3	     | |2	1	     |  |  0   |
@@ -516,8 +555,9 @@ var
 begin
   if (fCurrentMessage.FixedHeader <> 0) then
   begin
+	  //Reset KeepAliveTimmer intervall. No need to PingPong if we received data from broker.
+		fKeepAliveTimer.enabled:=false;fKeepAliveTimer.enabled:=true;
     MessageType := fCurrentMessage.FixedHeader shr 4;
-
     if (MessageType = Ord(MQTT.CONNACK)) then
     begin
       // Check if we were given a Connect Return Code.
@@ -526,8 +566,15 @@ begin
       if ((Length(fCurrentMessage.Data) > 0) and (Length(fCurrentMessage.Data) < 4)) then
       begin
         ConnectReturn := fCurrentMessage.Data[1];
-        Exception.Create('Connect Error Returned by the Broker. Error Code: ' +
-          IntToStr(fCurrentMessage.Data[1]));
+        if ConnectReturn <> 0 then
+        	raise Exception.Create('Connect Error Returned by the Broker. Error Code: ' + IntToStr(fCurrentMessage.Data[1]));
+          // ToDo
+          //0	Connection accepted
+          //1	Connection refused, unacceptable protocol version
+          //2	Connection refused, identifier rejected
+          //3	Connection refused, server unavailable
+          //4	Connection refused, bad user name or password
+          //5	Connection refused, not authorized
       end;
       if Assigned(OnConnAck) then
         OnConnAck(Self, ConnectReturn);
@@ -539,13 +586,9 @@ begin
         DataLen := BytesToStrLength(Copy(TBytes(fCurrentMessage.Data), 0, 2));
         // Get the Topic
         Delete(fCurrentMessage.Data, 0, 2);
-        DataAsString := TEncoding.ANSI.GetString(fCurrentMessage.Data);
+        DataAsString := IndyTextEncoding_UTF8.GetString(fCurrentMessage.Data);
         topic := DataAsString.Substring(0, DataLen);
         payload := DataAsString.Substring(DataLen);
-        // SetString(topic, PChar(@fCurrentMessage.Data[2]), DataLen);
-        // Get the Payload
-        // SetString(payload, PChar(@fCurrentMessage.Data[2 + DataLen]),
-        // (Length(fCurrentMessage.Data) - 2 - DataLen));
         if Assigned(OnPublish) then
           OnPublish(Self, topic, payload);
       end
@@ -594,8 +637,7 @@ end;
 
 function TMQTTClient.StrToBytes(str: string; perpendLength: boolean): TBytes;
 begin
-  Result := TBytes(TEncoding.ANSI.GetBytes(str));
-
+	Result := TBytes(toBytes(str,IndyTextEncoding_UTF8));
   { This is a UTF-8 hack to give 2 Bytes of Length followed by the string itself. }
   if perpendLength then
   begin
@@ -634,10 +676,15 @@ const
   MQTT_PROTOCOL = 'MQIsdp';
   MQTT_VERSION = 3;
 var
-  Qos, Retain: Word;
+  willRetain,willQos,Will,CleanSession : Byte;
   iByteIndex: integer;
   ProtoBytes: TBytes;
 begin
+	// currently fixed values.
+  CleanSession:=1;
+	Will:=1;
+  willQos := 0;
+  willRetain := 1;
   // Set the Length of our variable header array.
   SetLength(Result, 12);
   iByteIndex := 0;
@@ -649,10 +696,8 @@ begin
   Result[iByteIndex] := MQTT_VERSION;
   Inc(iByteIndex);
   // Connect Flags
-  Qos := 0;
-  Retain := 0;
   Result[iByteIndex] := 0;
-  Result[iByteIndex] := (Retain * 32) + (Qos * 16) + (1 * 4) + (1 * 2);
+  Result[iByteIndex] :=  (WillRetain * 32) + (WillQos * 16) + (Will * 4) + (CleanSession * 2);
   Inc(iByteIndex);
   Result[iByteIndex] := 0;
   Inc(iByteIndex);
@@ -678,8 +723,7 @@ begin
   Result := Self.GetMessageID;
 end;
 
-procedure TMQTTClient.CopyIntoArray(var aDestArray: Array of Byte; aSourceArray: Array of Byte;
-  StartIndex: integer);
+procedure TMQTTClient.CopyIntoArray(var aDestArray: Array of Byte; aSourceArray: Array of Byte;StartIndex: integer);
 begin
   Assert(StartIndex >= 0);
   Move(aSourceArray[0], aDestArray[StartIndex], Length(aSourceArray));
@@ -694,8 +738,7 @@ begin
   Move(aSource, aDest[DestLen], Length(aSource));
 end;
 
-function TMQTTClient.BuildCommand(aFixedHead: Byte; aRemainL: TBytes;
-  aVariableHead: TBytes; aPayload: Array of Byte): TBytes;
+function TMQTTClient.BuildCommand(aFixedHead: Byte; aRemainL: TBytes;aVariableHead: TBytes; aPayload: Array of Byte): TBytes;
 var
   iNextIndex: integer;
 begin
