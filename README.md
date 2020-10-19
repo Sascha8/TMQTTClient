@@ -1,37 +1,28 @@
-# TMQTTClient Library Version 1.01 for Delphi by Jamie I
+# MQTT-Client for Delphi based on the work of Jamie Ingilby and Daniele Teti
 
-## INTRODUCTION:
-TMQTTClient is a non-visual Delphi Client Library for the IBM Websphere MQ Transport Telemetry protocol ( http://mqtt.org ). It allows you to connect to a Message Broker that uses MQTT such as the Really Small Message Broker(http://alphaworks.ibm.com/tech/rsmb) which is freely available for evaluation purposes on IBM Alphaworks. 
+Based roughly on MQTT Spec v3.0 and most important part of 3.1 - **full UTF-8 support**. 
+- Currently no support for login via user/password to broker.
+- QoS 0 only 
+- See "Limitations" below
 
-The Documentation of the protocol can be found here:
-http://publib.boulder.ibm.com/infocenter/wmbhelp/v6r0m0/index.jsp?topic=/com.ibm.etools.mft.doc/ac10840_.htm
- 
+## Works well in Delphi Berlin
+
+Latest Fixes:
+- Changes to correct UTF8 encoding in TBytes - using IndyTextEncoding_UTF8.GetString() instead of TEncoding.ANSI.GetString();
+- Memory leak in HandleData() fixed through not raised exeption
+- ThreadHandling optimized.
+- Added Timer for KeepAlive-Ping to Client. Default 60 sec. Changing vtimeout via consructor possible.
+
+
 
 ## LIMITATIONS:
 This is not a reference implementation of the MQTT Protocol but does support both Publishing Messages and Subscribing to Topics with the following limitations: 
 	- It only allows and supports QoS 0 Messages. I haven’t built QoS levels 1 or 2 in yet as I 	personally have no need for them but this is planned for future versions.
-	- You are required to schedule pinging the server yourself (using a TTimer for examples). 	The client library implements a ping command but doesn’t automatically ping the server 	itself at regular intervals.
+	- ~~You are required to schedule pinging the server yourself (using a TTimer for examples). 	The client library implements a ping command but doesn’t automatically ping the server 	itself at regular intervals.~~
 
-Note: You should also be aware that it uses part of the Synapse Internet Communications Library for its Socket support so you’ll need to ensure that this is available on your search path.
 
 
 ## USAGE:
-There is a sample project included in the download but usage is relatively simple. This is a non-visual component so all you need to do is to put MQTT.pas and MQTTReadThread.pas  into a directory that is in your compiler paths and then put MQTT in your uses.
-
-```delphi
-uses MQTT;
-var
-	MQTTClient: TMQTTClient;
-begin
-	MQTTClient := TMQTTClient.Create('127.0.0.1', 1883);
-	MQTTClient.Connect;
-	MQTTClient.Publish('/dev/test', 'This is a test message.');
-	MQTTClient.Disconnect;
-	MQTTClient.Free;
-end;
-```
+There is a sample project included in the download but usage is relatively simple. 
 
 
-Special Thanks go to Andy Stanford-Clark and Nick O’Leary for their help on various “hiccups” that I encountered while developing and testing TMQTTClient.
-
-If you are using my TMQTTClient in anything then I’d love to hear about how you’re using it, please contact me and let me know what you’re using it for.
